@@ -2,6 +2,7 @@ const express = require("express");
 const app = express();
 const server = require("http").Server(app);
 const { v4: uuidV4 } = require("uuid");
+const { ExpressPeerServer } = require("peer");
 const io = require("socket.io")(server, {
   cors: {
     origin: ["http://localhost:3000"],
@@ -9,21 +10,16 @@ const io = require("socket.io")(server, {
 });
 const data = require("./data.json");
 const PORT = process.env.PORT || 4000;
+const peerServer = ExpressPeerServer(server, {
+  debug: true,
+});
+app.use("/*", peerServer);
+// console.log(peerServer)
 let rooms = [];
 const getName = (id) => {
   const user = data.find((item) => item.officeId === id);
   return user === undefined ? "not found" : user.name;
 };
-// app.get("/", (req, res) => {
-//   res.status(200).redirect(`/${uuidV4()}`);
-// });
-// app.get("/api", (req, res) => {
-//   res.json({ message: "Hello from Express!" });
-// });
-// app.get(`/:room`, (req, res) => {
-//   res.status(200).send(`hello world`);
-//   // res.render("room", { roomId: req.params.room });
-// });
 const sendUsers = (id) => {
   console.log(rooms[id], id);
   if (id >= 0) io.in(rooms[id].room_id).emit("in-call", rooms[id].room_details);
@@ -39,7 +35,7 @@ io.on("connection", (socket) => {
     const room_id = my_id;
     socket.emit("join", room_id);
   });
-  socket.on("caller-view", (room_id,my_id) => {
+  socket.on("caller-view", (room_id, my_id) => {
     socket.join(room_id);
     const roomIndex = rooms.findIndex((item) => item.room_id === room_id);
     if (roomIndex < 0) {
@@ -89,17 +85,27 @@ io.on("connection", (socket) => {
       }
     } else {
       socket.emit("no-exist");
-    } 
+    }
     sendUsers(rooms.findIndex((each) => each.room_id === room_id));
+  });
+  socket.on("msg", (input, room, id) => {
+    const senderRoom = rooms.filter((item) => item.room_id === room);
+    const sender = senderRoom[0].room_details.filter(
+      (item) => item.officeId === id
+    );
+    console.log(sender[0]);
+    io.in(room).emit("new-msg", input, sender[0].name, id);
   });
   socket.on("disconnecting", () => {
     // console.log("disconnecting", socket.id);
   });
-  socket.on("disconnect", () => {
-    // console.log("disconnect", socket.id);
-  });
   socket.on("connect", () => {
     // console.log("connect", socket.id);
+  });
+  socket.on("disconnect", function () {
+    // socket.removeAllListeners("send message");
+    // socket.removeAllListeners("disconnect");
+    // io.removeAllListeners("connection");
   });
 });
 
